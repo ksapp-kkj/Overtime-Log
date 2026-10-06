@@ -5,8 +5,10 @@ const REST_PERIODS = [
   { start: 12 * 60, end: 12 * 60 + 50 },
   { start: 15 * 60, end: 15 * 60 + 10 }
 ];
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 let workData = JSON.parse(localStorage.getItem('workData')) || {};
+let holidaysData = JSON.parse(localStorage.getItem('holidaysData')) || [];
 let currentDisplayDate = new Date();
 let monthStartDay = parseInt(localStorage.getItem('monthStartDay'), 10) || 21;
 
@@ -39,68 +41,99 @@ function parseOvertimeString(str) {
   return 0;
 }
 
+function formatDateString(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
-// ====== メイン表示＆集計ロジック ======
-
-function updateCurrentMonthDisplay() {
-  const today = new Date();
-  let year = today.getFullYear();
-  let month = today.getMonth() + 1;
-  let date = today.getDate();
-  let dayIndex = today.getDay();
-
-  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-  document.getElementById('today-date').textContent = `${year}年${month}月${date}日(${weekdays[dayIndex]})`;
-
-  if (!document.getElementById('work-date').value) {
-    const mStr = String(month).padStart(2, '0');
-    const dStr = String(date).padStart(2, '0');
-    document.getElementById('work-date').value = `${year}-${mStr}-${dStr}`;
-  }
-
+// ★ 追加：現在の日付に基づく「対象月度の期間」を計算する関数
+function getTargetPeriod(dateObj, startDaySetting) {
+  let year = dateObj.getFullYear();
+  let month = dateObj.getMonth() + 1;
+  let date = dateObj.getDate();
+  
   let targetYear = year;
   let targetMonth = month;
-  let startMonth = month; 
+  let startMonth = month;
   let startDateObj, endDateObj;
 
-  if (monthStartDay === 1) {
-    document.getElementById('current-month').textContent = `${year}年${month}月度`;
-    const lastDayOfMonth = new Date(year, month, 0).getDate();
-    document.getElementById('current-period').textContent = `${month}/1〜${month}/${lastDayOfMonth}`;
+  if (startDaySetting === 1) {
     startDateObj = new Date(year, month - 1, 1);
     endDateObj = new Date(year, month, 0);
-  } else {
-    if (date >= monthStartDay) {
-      targetMonth += 1;
-      if (targetMonth > 12) {
-        targetMonth = 1;
-        targetYear += 1;
-      }
-      startMonth = targetMonth - 1;
-      startDateObj = new Date(year, month - 1, monthStartDay);
-      endDateObj = new Date(year, month, monthStartDay - 1);
-    } else {
-      startMonth = targetMonth - 1;
-      if (startMonth === 0) {
-        startMonth = 12;
-      }
-      startDateObj = new Date(year, month - 2, monthStartDay);
-      endDateObj = new Date(year, month - 1, monthStartDay - 1);
-    }
-
-    let endDay = monthStartDay - 1;
-    document.getElementById('current-month').textContent = `${targetYear}年${targetMonth}月度`;
-    document.getElementById('current-period').textContent = `${startMonth}/${monthStartDay}〜${targetMonth}/${endDay}`;
+    return { targetYear, targetMonth, startMonth, startDateObj, endDateObj };
   }
 
+  if (date >= startDaySetting) {
+    targetMonth += 1;
+    if (targetMonth > 12) {
+      targetMonth = 1;
+      targetYear += 1;
+    }
+    startMonth = targetMonth - 1;
+    startDateObj = new Date(year, month - 1, startDaySetting);
+    endDateObj = new Date(year, month, startDaySetting - 1);
+  } else {
+    startMonth = targetMonth - 1;
+    if (startMonth === 0) {
+      startMonth = 12;
+    }
+    startDateObj = new Date(year, month - 2, startDaySetting);
+    endDateObj = new Date(year, month - 1, startDaySetting - 1);
+  }
+  return { targetYear, targetMonth, startMonth, startDateObj, endDateObj };
+}
+
+
+// ====== メイン表示＆集計ロジック ======
+function updateCurrentMonthDisplay() {
+  const today = new Date();
+  document.getElementById('today-date').textContent = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日(${WEEKDAYS[today.getDay()]})`;
+
+  if (!document.getElementById('work-date').value) {
+    document.getElementById('work-date').value = formatDateString(today);
+  }
+
+  // 期間を取得
+  const period = getTargetPeriod(today, monthStartDay);
+  
+  // HTMLを更新
+  document.getElementById('current-month').textContent = `${period.targetYear}年${period.targetMonth}月度`;
+  
+  if (monthStartDay === 1) {
+    document.getElementById('current-period').textContent = `${period.startMonth}/1〜${period.startMonth}/${period.endDateObj.getDate()}`;
+  } else {
+    document.getElementById('current-period').textContent = `${period.startMonth}/${monthStartDay}〜${period.targetMonth}/${monthStartDay - 1}`;
+  }
+
+  // 出勤日数の計算
+  // getTime() でミリ秒比較にして正確に日数を出す
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const totalDays = Math.round((period.endDateObj.getTime() - period.startDateObj.getTime()) / msPerDay) + 1;
+  
+  let holidayCount = 0;
+  // ループ用に新しいDateオブジェクトを作成（元の期間を汚染しない）
+  let loopDate = new Date(period.startDateObj);
+  while (loopDate <= period.endDateObj) {
+    if (holidaysData.includes(formatDateString(loopDate))) {
+      holidayCount++;
+    }
+    loopDate.setDate(loopDate.getDate() + 1);
+  }
+  
+  const workingDays = totalDays - holidayCount;
+  document.getElementById('work-days-display').textContent = workingDays;
+
+  // 残業時間の計算
   let totalOvertimeMins = 0;
+  // 比較用に時刻を0:00にリセット
+  const pStart = new Date(period.startDateObj).setHours(0,0,0,0);
+  const pEnd = new Date(period.endDateObj).setHours(0,0,0,0);
+
   for (const dateStr in workData) {
-    const workDate = new Date(dateStr);
-    workDate.setHours(0, 0, 0, 0);
-    startDateObj.setHours(0, 0, 0, 0);
-    endDateObj.setHours(0, 0, 0, 0);
-    
-    if (workDate >= startDateObj && workDate <= endDateObj) {
+    const workDateMs = new Date(dateStr).setHours(0, 0, 0, 0);
+    if (workDateMs >= pStart && workDateMs <= pEnd) {
       const data = workData[dateStr];
       if (data.overtimeMins !== undefined) {
         totalOvertimeMins += data.overtimeMins;
@@ -152,15 +185,13 @@ function calculateWorkData(startTimeVal, endTimeVal) {
 // ====== 新規登録処理 ======
 document.getElementById('work-form').addEventListener('submit', function(event) {
   event.preventDefault();
-
   const dateVal = document.getElementById('work-date').value;
   const startTimeVal = document.getElementById('start-time').value;
   const endTimeVal = document.getElementById('end-time').value;
 
   if (!dateVal) return;
-
   const newData = calculateWorkData(startTimeVal, endTimeVal);
-  if (!newData) return; // エラー時は処理中断
+  if (!newData) return; 
 
   workData[dateVal] = newData;
   localStorage.setItem('workData', JSON.stringify(workData));
@@ -174,46 +205,47 @@ document.getElementById('work-form').addEventListener('submit', function(event) 
 
 // ====== カレンダー関連 ======
 function renderCalendar() {
-  const year = currentDisplayDate.getFullYear();
-  const month = currentDisplayDate.getMonth();
+  // ★ 変更：単なる「1日〜月末」ではなく、現在の月度期間（例: 21日〜20日）を取得する
+  const period = getTargetPeriod(currentDisplayDate, monthStartDay);
 
-  document.getElementById('calendar-title').textContent = `${year}年${month + 1}月`;
-  const firstDayIndex = new Date(year, month, 1).getDay();
-  const lastDate = new Date(year, month + 1, 0).getDate();
+  // カレンダーのタイトルを「〇〇年〇月度」に変更
+  document.getElementById('calendar-title').textContent = `${period.targetYear}年${period.targetMonth}月度`;
 
   const grid = document.querySelector('.calendar-grid');
   
-  // ★ 変更：スマホで隠すために weekday-header クラスを追加
   grid.innerHTML = `
     <div class="weekday weekday-header">日</div><div class="weekday weekday-header">月</div>
     <div class="weekday weekday-header">火</div><div class="weekday weekday-header">水</div>
     <div class="weekday weekday-header">木</div><div class="weekday weekday-header">金</div><div class="weekday weekday-header">土</div>
   `;
 
-  for (let i = 0; i < firstDayIndex; i++) {
+  // 期間の開始日の曜日に合わせて、最初の空白マスを追加
+  const startDayIndex = period.startDateObj.getDay();
+  for (let i = 0; i < startDayIndex; i++) {
     const emptyDiv = document.createElement('div');
     emptyDiv.classList.add('calendar-day', 'empty');
     grid.appendChild(emptyDiv);
   }
 
-  // 曜日を計算するための配列
-  const weekdaysArr = ["日", "月", "火", "水", "木", "金", "土"];
-
-  for (let i = 1; i <= lastDate; i++) {
+  // 期間の開始日から終了日までループしてマスを作る
+  let loopDate = new Date(period.startDateObj);
+  while (loopDate <= period.endDateObj) {
     const dayDiv = document.createElement('div');
     dayDiv.classList.add('calendar-day');
     
-    const monthStr = String(month + 1).padStart(2, '0');
-    const dayStr = String(i).padStart(2, '0');
-    const fullDateStr = `${year}-${monthStr}-${dayStr}`;
+    const fullDateStr = formatDateString(loopDate);
+    const dayOfWeekStr = WEEKDAYS[loopDate.getDay()];
 
-    // その日の曜日を計算
-    const currentDayIndex = (firstDayIndex + i - 1) % 7;
-    const dayOfWeekStr = weekdaysArr[currentDayIndex];
+    // ★ 変更：月をまたぐ時（1日）と、月度の開始日には「9/21」のように月も表示する
+    let displayDate = loopDate.getDate();
+    if (displayDate === 1 || displayDate === monthStartDay) {
+      displayDate = `${loopDate.getMonth() + 1}/${displayDate}`;
+    }
 
-    // ★ 変更：スマホ用の曜日テキスト（mobile-weekday）を仕込んでおく
-    dayDiv.innerHTML = `<div class="date-number">${i} <span class="mobile-weekday">(${dayOfWeekStr})</span></div>`;
+    // 日付を表示
+    dayDiv.innerHTML = `<div class="date-number">${displayDate} <span class="mobile-weekday">(${dayOfWeekStr})</span></div>`;
     
+    // データがあれば残業時間を表示
     if (workData[fullDateStr]) {
       dayDiv.classList.add('has-data');
       dayDiv.innerHTML += `<div class="overtime-display">${workData[fullDateStr].overtime}</div>`;
@@ -222,16 +254,23 @@ function renderCalendar() {
         openEditModal(fullDateStr);
       });
     }
+    
     grid.appendChild(dayDiv);
+    
+    // 次の日へ
+    loopDate.setDate(loopDate.getDate() + 1);
   }
 }
 
+// （※すぐ下にある先月・来月ボタンの処理に、バグ防止のため setDate(15) を追加しておくと安全だよ！）
 document.getElementById('prev-month').addEventListener('click', () => {
+  currentDisplayDate.setDate(15); // 月またぎの計算ズレを防ぐため15日に固定
   currentDisplayDate.setMonth(currentDisplayDate.getMonth() - 1);
   renderCalendar();
 });
 
 document.getElementById('next-month').addEventListener('click', () => {
+  currentDisplayDate.setDate(15);
   currentDisplayDate.setMonth(currentDisplayDate.getMonth() + 1);
   renderCalendar();
 });
@@ -253,6 +292,9 @@ openSettingsBtn.addEventListener('click', (e) => {
   e.preventDefault();
   sideMenu.classList.add('hidden');
   document.getElementById('start-day-setting').value = monthStartDay;
+  document.getElementById('modal-period-display').textContent = document.getElementById('current-period').textContent;
+  
+  renderHolidayGrid();
   settingsModal.classList.remove('hidden');
 });
 
@@ -264,49 +306,101 @@ saveSettingsBtn.addEventListener('click', () => {
   const newStartDay = parseInt(document.getElementById('start-day-setting').value, 10);
   if (newStartDay >= 1 && newStartDay <= 31) {
     monthStartDay = newStartDay;
+    
     localStorage.setItem('monthStartDay', monthStartDay);
+    localStorage.setItem('holidaysData', JSON.stringify(holidaysData));
+    
     updateCurrentMonthDisplay(); 
     settingsModal.classList.add('hidden');
-    alert(`月度の開始日を「${monthStartDay}日」に変更しました。`);
+    alert("月度設定と休日を保存しました！");
   } else {
-    alert("1〜31の数字を入力してください。");
+    alert("開始日は1〜31の数字を入力してください。");
   }
 });
 
 
-// ====== ★新規：編集・削除関連 ======
+// ★ 変更：休日選択グリッドを描画する関数（カレンダー形式に整列）
+function renderHolidayGrid() {
+  const grid = document.getElementById('holiday-grid');
+  grid.innerHTML = ''; 
+  
+  // 表示中の期間を再取得
+  const period = getTargetPeriod(new Date(), monthStartDay);
+  
+  // 1. 曜日のヘッダー（日〜土）を先に追加
+  WEEKDAYS.forEach(day => {
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'weekday';
+    headerDiv.style.fontSize = '0.85rem';
+    headerDiv.textContent = day;
+    grid.appendChild(headerDiv);
+  });
+
+  // 2. 期間開始日の曜日（0:日曜 〜 6:土曜）に合わせて、最初の空白マスを入れる
+  const startDayIndex = period.startDateObj.getDay();
+  for (let i = 0; i < startDayIndex; i++) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'holiday-btn empty-btn';
+    grid.appendChild(emptyDiv);
+  }
+  
+  // 3. 日付ボタンを順番に配置
+  let loopDate = new Date(period.startDateObj);
+  while (loopDate <= period.endDateObj) {
+    const dateStr = formatDateString(loopDate);
+    
+    const btn = document.createElement('div');
+    btn.className = 'holiday-btn';
+    
+    if (holidaysData.includes(dateStr)) {
+      btn.classList.add('is-holiday');
+    }
+    
+    btn.innerHTML = `<span class="h-date">${loopDate.getDate()}</span><span class="h-day">${WEEKDAYS[loopDate.getDay()]}</span>`;
+    
+    btn.addEventListener('click', () => {
+      if (btn.classList.contains('is-holiday')) {
+        btn.classList.remove('is-holiday');
+        holidaysData = holidaysData.filter(hd => hd !== dateStr);
+      } else {
+        btn.classList.add('is-holiday');
+        holidaysData.push(dateStr);
+      }
+    });
+    
+    grid.appendChild(btn);
+    loopDate.setDate(loopDate.getDate() + 1);
+  }
+}
+
+
+// ====== 編集・削除関連 ======
 const editModal = document.getElementById('edit-modal');
 const closeEditBtn = document.getElementById('cancel-edit-btn');
 const saveEditBtn = document.getElementById('save-edit-btn');
 const deleteEditBtn = document.getElementById('delete-edit-btn');
-let currentEditingDate = null; // 今編集している日付を保持する変数
+let currentEditingDate = null; 
 
-// 編集モーダルを開く処理
 function openEditModal(dateStr) {
   currentEditingDate = dateStr;
   const data = workData[dateStr];
-  
-  // 画面に元の日付と時間をセット
   document.getElementById('edit-date-display').textContent = `${dateStr} の記録`;
   document.getElementById('edit-start-time').value = data.start;
   document.getElementById('edit-end-time').value = data.end;
-  
   editModal.classList.remove('hidden');
 }
 
-// 編集をキャンセルして閉じる
 closeEditBtn.addEventListener('click', () => {
   editModal.classList.add('hidden');
   currentEditingDate = null;
 });
 
-// 編集内容を保存する
 saveEditBtn.addEventListener('click', () => {
   const startTimeVal = document.getElementById('edit-start-time').value;
   const endTimeVal = document.getElementById('edit-end-time').value;
 
   const updatedData = calculateWorkData(startTimeVal, endTimeVal);
-  if (!updatedData) return; // エラー時は処理中断
+  if (!updatedData) return;
 
   workData[currentEditingDate] = updatedData;
   localStorage.setItem('workData', JSON.stringify(workData));
@@ -317,7 +411,6 @@ saveEditBtn.addEventListener('click', () => {
   alert("記録を更新しました！");
 });
 
-// 記録を削除する
 deleteEditBtn.addEventListener('click', () => {
   if (confirm(`${currentEditingDate} の記録を削除してもよろしいですか？`)) {
     delete workData[currentEditingDate];
