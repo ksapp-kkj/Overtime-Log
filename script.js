@@ -7,10 +7,38 @@ const REST_PERIODS = [
 ];
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
-let workData = JSON.parse(localStorage.getItem('workData')) || {};
-let holidaysData = JSON.parse(localStorage.getItem('holidaysData')) || [];
+function safeJSONParse(key, defaultValue) {
+  try {
+    const val = localStorage.getItem(key);
+    if (!val || val === "undefined" || val === "null") return defaultValue;
+    return JSON.parse(val);
+  } catch (e) {
+    console.warn(`[${key}] のデータ修復を行いました。`);
+    return defaultValue;
+  }
+}
+
+let workData = safeJSONParse('workData', {});
+let holidaysData = safeJSONParse('holidaysData', {});
+
+let monthStartDay = parseInt(localStorage.getItem('monthStartDay'), 10);
+if (isNaN(monthStartDay)) monthStartDay = 21;
+
+let defaultStartTime = localStorage.getItem('defaultStartTime') || "08:30";
+let defaultEndTime = localStorage.getItem('defaultEndTime') || "17:30";
+
+let isHolidayEditMode = false;
+
+if (Array.isArray(holidaysData)) {
+  let migrated = {};
+  holidaysData.forEach(d => migrated[d] = 'holiday');
+  holidaysData = migrated;
+  localStorage.setItem('holidaysData', JSON.stringify(holidaysData));
+}
+
+let currentPeriodStartObj = null;
+let currentPeriodEndObj = null;
 let currentDisplayDate = new Date();
-let monthStartDay = parseInt(localStorage.getItem('monthStartDay'), 10) || 21;
 
 
 // ====== ユーティリティ関数 ======
@@ -18,7 +46,6 @@ function timeToMinutes(timeStr) {
   const [hours, minutes] = timeStr.split(':').map(Number);
   return hours * 60 + minutes;
 }
-
 function minutesToDisplay(totalMinutes) {
   const isNegative = totalMinutes < 0;
   const absMinutes = Math.abs(totalMinutes);
@@ -27,7 +54,6 @@ function minutesToDisplay(totalMinutes) {
   const sign = isNegative ? "-" : (totalMinutes > 0 ? "+" : "");
   return `${sign}${hours}時間${mins}分`;
 }
-
 function parseOvertimeString(str) {
   if (!str) return 0;
   const isNegative = str.startsWith('-');
@@ -40,15 +66,12 @@ function parseOvertimeString(str) {
   }
   return 0;
 }
-
 function formatDateString(dateObj) {
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
   const d = String(dateObj.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
-
-// ★ 追加：現在の日付に基づく「対象月度の期間」を計算する関数
 function getTargetPeriod(dateObj, startDaySetting) {
   let year = dateObj.getFullYear();
   let month = dateObj.getMonth() + 1;
@@ -85,6 +108,45 @@ function getTargetPeriod(dateObj, startDaySetting) {
   return { targetYear, targetMonth, startMonth, startDateObj, endDateObj };
 }
 
+function initTimeSelects() {
+  const hours = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
+  const minutes = ["00", "10", "20", "30", "40", "50"];
+  
+  const [defStartH, defStartM] = defaultStartTime.split(':');
+  const [defEndH, defEndM] = defaultEndTime.split(':');
+
+  const selectsData = [
+    {h: 'start-time-h', m: 'start-time-m', defH: defStartH, defM: defStartM},
+    {h: 'end-time-h', m: 'end-time-m', defH: defEndH, defM: defEndM},
+    {h: 'edit-start-time-h', m: 'edit-start-time-m', defH: defStartH, defM: defStartM},
+    {h: 'edit-end-time-h', m: 'edit-end-time-m', defH: defEndH, defM: defEndM},
+    {h: 'setting-start-time-h', m: 'setting-start-time-m', defH: defStartH, defM: defStartM},
+    {h: 'setting-end-time-h', m: 'setting-end-time-m', defH: defEndH, defM: defEndM}
+  ];
+
+  selectsData.forEach(sel => {
+    const hElem = document.getElementById(sel.h);
+    const mElem = document.getElementById(sel.m);
+    if (!hElem || !mElem) return;
+    
+    hElem.innerHTML = ''; mElem.innerHTML = '';
+
+    hours.forEach(hr => {
+      const opt = document.createElement('option');
+      opt.value = hr; opt.textContent = hr;
+      hElem.appendChild(opt);
+    });
+    hElem.value = sel.defH;
+
+    minutes.forEach(min => {
+      const opt = document.createElement('option');
+      opt.value = min; opt.textContent = min;
+      mElem.appendChild(opt);
+    });
+    mElem.value = sel.defM;
+  });
+}
+
 
 // ====== メイン表示＆集計ロジック ======
 function updateCurrentMonthDisplay() {
@@ -95,10 +157,7 @@ function updateCurrentMonthDisplay() {
     document.getElementById('work-date').value = formatDateString(today);
   }
 
-  // 期間を取得
   const period = getTargetPeriod(today, monthStartDay);
-  
-  // HTMLを更新
   document.getElementById('current-month').textContent = `${period.targetYear}年${period.targetMonth}月度`;
   
   if (monthStartDay === 1) {
@@ -107,27 +166,25 @@ function updateCurrentMonthDisplay() {
     document.getElementById('current-period').textContent = `${period.startMonth}/${monthStartDay}〜${period.targetMonth}/${monthStartDay - 1}`;
   }
 
-  // 出勤日数の計算
-  // getTime() でミリ秒比較にして正確に日数を出す
   const msPerDay = 1000 * 60 * 60 * 24;
   const totalDays = Math.round((period.endDateObj.getTime() - period.startDateObj.getTime()) / msPerDay) + 1;
   
   let holidayCount = 0;
-  // ループ用に新しいDateオブジェクトを作成（元の期間を汚染しない）
+  let paidLeaveCount = 0;
   let loopDate = new Date(period.startDateObj);
+  
   while (loopDate <= period.endDateObj) {
-    if (holidaysData.includes(formatDateString(loopDate))) {
-      holidayCount++;
-    }
+    const dStr = formatDateString(loopDate);
+    if (holidaysData[dStr] === 'holiday') holidayCount++;
+    if (holidaysData[dStr] === 'paid_leave') paidLeaveCount++;
     loopDate.setDate(loopDate.getDate() + 1);
   }
   
-  const workingDays = totalDays - holidayCount;
+  const workingDays = totalDays - holidayCount - paidLeaveCount;
   document.getElementById('work-days-display').textContent = workingDays;
+  document.getElementById('paid-leave-display').textContent = paidLeaveCount;
 
-  // 残業時間の計算
   let totalOvertimeMins = 0;
-  // 比較用に時刻を0:00にリセット
   const pStart = new Date(period.startDateObj).setHours(0,0,0,0);
   const pEnd = new Date(period.endDateObj).setHours(0,0,0,0);
 
@@ -151,6 +208,7 @@ function updateCurrentMonthDisplay() {
 function calculateWorkData(startTimeVal, endTimeVal) {
   const rawStartMins = timeToMinutes(startTimeVal);
   const rawEndMins = timeToMinutes(endTimeVal);
+  
   const startMins = Math.ceil(rawStartMins / 10) * 10;
   const endMins = Math.floor(rawEndMins / 10) * 10;
 
@@ -186,8 +244,14 @@ function calculateWorkData(startTimeVal, endTimeVal) {
 document.getElementById('work-form').addEventListener('submit', function(event) {
   event.preventDefault();
   const dateVal = document.getElementById('work-date').value;
-  const startTimeVal = document.getElementById('start-time').value;
-  const endTimeVal = document.getElementById('end-time').value;
+  
+  const startH = document.getElementById('start-time-h').value;
+  const startM = document.getElementById('start-time-m').value;
+  const endH = document.getElementById('end-time-h').value;
+  const endM = document.getElementById('end-time-m').value;
+  
+  const startTimeVal = `${startH}:${startM}`;
+  const endTimeVal = `${endH}:${endM}`;
 
   if (!dateVal) return;
   const newData = calculateWorkData(startTimeVal, endTimeVal);
@@ -205,21 +269,22 @@ document.getElementById('work-form').addEventListener('submit', function(event) 
 
 // ====== カレンダー関連 ======
 function renderCalendar() {
-  // ★ 変更：単なる「1日〜月末」ではなく、現在の月度期間（例: 21日〜20日）を取得する
   const period = getTargetPeriod(currentDisplayDate, monthStartDay);
-
-  // カレンダーのタイトルを「〇〇年〇月度」に変更
   document.getElementById('calendar-title').textContent = `${period.targetYear}年${period.targetMonth}月度`;
 
   const grid = document.querySelector('.calendar-grid');
-  
   grid.innerHTML = `
     <div class="weekday weekday-header">日</div><div class="weekday weekday-header">月</div>
     <div class="weekday weekday-header">火</div><div class="weekday weekday-header">水</div>
     <div class="weekday weekday-header">木</div><div class="weekday weekday-header">金</div><div class="weekday weekday-header">土</div>
   `;
 
-  // 期間の開始日の曜日に合わせて、最初の空白マスを追加
+  if (isHolidayEditMode) {
+    grid.classList.add('holiday-edit-mode');
+  } else {
+    grid.classList.remove('holiday-edit-mode');
+  }
+
   const startDayIndex = period.startDateObj.getDay();
   for (let i = 0; i < startDayIndex; i++) {
     const emptyDiv = document.createElement('div');
@@ -227,7 +292,6 @@ function renderCalendar() {
     grid.appendChild(emptyDiv);
   }
 
-  // 期間の開始日から終了日までループしてマスを作る
   let loopDate = new Date(period.startDateObj);
   while (loopDate <= period.endDateObj) {
     const dayDiv = document.createElement('div');
@@ -236,35 +300,53 @@ function renderCalendar() {
     const fullDateStr = formatDateString(loopDate);
     const dayOfWeekStr = WEEKDAYS[loopDate.getDay()];
 
-    // ★ 変更：月をまたぐ時（1日）と、月度の開始日には「9/21」のように月も表示する
     let displayDate = loopDate.getDate();
     if (displayDate === 1 || displayDate === monthStartDay) {
       displayDate = `${loopDate.getMonth() + 1}/${displayDate}`;
     }
 
-    // 日付を表示
-    dayDiv.innerHTML = `<div class="date-number">${displayDate} <span class="mobile-weekday">(${dayOfWeekStr})</span></div>`;
+    const dType = holidaysData[fullDateStr];
+    let badgeHtml = '';
+    if (dType === 'holiday') {
+      badgeHtml = `<span class="status-badge holiday-badge">休日</span>`;
+    } else if (dType === 'paid_leave') {
+      badgeHtml = `<span class="status-badge paid-leave-badge">有給</span>`;
+    }
+
+    dayDiv.innerHTML = `<div class="date-number">${displayDate} <span class="mobile-weekday">(${dayOfWeekStr})</span> ${badgeHtml}</div>`;
     
-    // データがあれば残業時間を表示
     if (workData[fullDateStr]) {
       dayDiv.classList.add('has-data');
       dayDiv.innerHTML += `<div class="overtime-display">${workData[fullDateStr].overtime}</div>`;
-      
-      dayDiv.addEventListener('click', function() {
-        openEditModal(fullDateStr);
-      });
-    }
+    } 
+    // ★ 変更：有給の「7時間50分」表示のブロックを削除しました
     
+    dayDiv.addEventListener('click', function() {
+      if (isHolidayEditMode) {
+        if (dType === 'holiday') {
+          holidaysData[fullDateStr] = 'paid_leave';
+        } else if (dType === 'paid_leave') {
+          delete holidaysData[fullDateStr];
+        } else {
+          holidaysData[fullDateStr] = 'holiday';
+        }
+        localStorage.setItem('holidaysData', JSON.stringify(holidaysData));
+        updateCurrentMonthDisplay();
+        renderCalendar();
+      } else {
+        if (workData[fullDateStr]) {
+          openEditModal(fullDateStr);
+        }
+      }
+    });
+
     grid.appendChild(dayDiv);
-    
-    // 次の日へ
     loopDate.setDate(loopDate.getDate() + 1);
   }
 }
 
-// （※すぐ下にある先月・来月ボタンの処理に、バグ防止のため setDate(15) を追加しておくと安全だよ！）
 document.getElementById('prev-month').addEventListener('click', () => {
-  currentDisplayDate.setDate(15); // 月またぎの計算ズレを防ぐため15日に固定
+  currentDisplayDate.setDate(15); 
   currentDisplayDate.setMonth(currentDisplayDate.getMonth() - 1);
   renderCalendar();
 });
@@ -275,27 +357,67 @@ document.getElementById('next-month').addEventListener('click', () => {
   renderCalendar();
 });
 
+const toggleHolidayBtn = document.getElementById('toggle-holiday-mode-btn');
+const holidayGuide = document.getElementById('holiday-mode-guide');
+
+if (toggleHolidayBtn) {
+  toggleHolidayBtn.addEventListener('click', () => {
+    isHolidayEditMode = !isHolidayEditMode;
+    if (isHolidayEditMode) {
+      toggleHolidayBtn.textContent = '✅ 休日設定を完了する';
+      toggleHolidayBtn.classList.add('active');
+      holidayGuide.classList.remove('hidden');
+    } else {
+      toggleHolidayBtn.textContent = '休日・有給を設定する';
+      toggleHolidayBtn.classList.remove('active');
+      holidayGuide.classList.add('hidden');
+    }
+    renderCalendar(); 
+  });
+}
+
+const toggleCalBtn = document.getElementById('toggle-calendar-btn');
+if (toggleCalBtn) {
+  toggleCalBtn.addEventListener('click', () => {
+    const grid = document.querySelector('.calendar-grid');
+    grid.classList.toggle('collapsed');
+    if (grid.classList.contains('collapsed')) {
+      toggleCalBtn.textContent = 'カレンダーを開く ▼';
+    } else {
+      toggleCalBtn.textContent = 'カレンダーを閉じる ▲';
+    }
+  });
+}
+
+if (window.innerWidth <= 768) {
+  const grid = document.querySelector('.calendar-grid');
+  if(grid) grid.classList.add('collapsed');
+}
+
 
 // ====== メニュー＆設定関連 ======
-const menuBtn = document.getElementById('menu-btn');
-const sideMenu = document.getElementById('side-menu');
 const openSettingsBtn = document.getElementById('open-settings');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsBtn = document.getElementById('close-settings');
 const saveSettingsBtn = document.getElementById('save-settings');
 
-menuBtn.addEventListener('click', () => {
-  sideMenu.classList.toggle('hidden');
-});
-
 openSettingsBtn.addEventListener('click', (e) => {
   e.preventDefault();
-  sideMenu.classList.add('hidden');
-  document.getElementById('start-day-setting').value = monthStartDay;
-  document.getElementById('modal-period-display').textContent = document.getElementById('current-period').textContent;
-  
-  renderHolidayGrid();
-  settingsModal.classList.remove('hidden');
+  try {
+    document.getElementById('start-day-setting').value = monthStartDay;
+    
+    const [sH, sM] = defaultStartTime.split(':');
+    const [eH, eM] = defaultEndTime.split(':');
+    document.getElementById('setting-start-time-h').value = sH;
+    document.getElementById('setting-start-time-m').value = sM;
+    document.getElementById('setting-end-time-h').value = eH;
+    document.getElementById('setting-end-time-m').value = eM;
+    
+    settingsModal.classList.remove('hidden');
+  } catch (err) {
+    console.error("モーダル展開エラー:", err);
+    alert("エラーが発生しました。ページを再読み込みしてください。");
+  }
 });
 
 closeSettingsBtn.addEventListener('click', () => {
@@ -304,74 +426,34 @@ closeSettingsBtn.addEventListener('click', () => {
 
 saveSettingsBtn.addEventListener('click', () => {
   const newStartDay = parseInt(document.getElementById('start-day-setting').value, 10);
+  
+  const sH = document.getElementById('setting-start-time-h').value;
+  const sM = document.getElementById('setting-start-time-m').value;
+  const eH = document.getElementById('setting-end-time-h').value;
+  const eM = document.getElementById('setting-end-time-m').value;
+
   if (newStartDay >= 1 && newStartDay <= 31) {
     monthStartDay = newStartDay;
-    
+    defaultStartTime = `${sH}:${sM}`;
+    defaultEndTime = `${eH}:${eM}`;
+
     localStorage.setItem('monthStartDay', monthStartDay);
-    localStorage.setItem('holidaysData', JSON.stringify(holidaysData));
+    localStorage.setItem('defaultStartTime', defaultStartTime);
+    localStorage.setItem('defaultEndTime', defaultEndTime);
+    
+    document.getElementById('start-time-h').value = sH;
+    document.getElementById('start-time-m').value = sM;
+    document.getElementById('end-time-h').value = eH;
+    document.getElementById('end-time-m').value = eM;
     
     updateCurrentMonthDisplay(); 
+    renderCalendar(); 
     settingsModal.classList.add('hidden');
-    alert("月度設定と休日を保存しました！");
+    alert("設定を保存しました！");
   } else {
     alert("開始日は1〜31の数字を入力してください。");
   }
 });
-
-
-// ★ 変更：休日選択グリッドを描画する関数（カレンダー形式に整列）
-function renderHolidayGrid() {
-  const grid = document.getElementById('holiday-grid');
-  grid.innerHTML = ''; 
-  
-  // 表示中の期間を再取得
-  const period = getTargetPeriod(new Date(), monthStartDay);
-  
-  // 1. 曜日のヘッダー（日〜土）を先に追加
-  WEEKDAYS.forEach(day => {
-    const headerDiv = document.createElement('div');
-    headerDiv.className = 'weekday';
-    headerDiv.style.fontSize = '0.85rem';
-    headerDiv.textContent = day;
-    grid.appendChild(headerDiv);
-  });
-
-  // 2. 期間開始日の曜日（0:日曜 〜 6:土曜）に合わせて、最初の空白マスを入れる
-  const startDayIndex = period.startDateObj.getDay();
-  for (let i = 0; i < startDayIndex; i++) {
-    const emptyDiv = document.createElement('div');
-    emptyDiv.className = 'holiday-btn empty-btn';
-    grid.appendChild(emptyDiv);
-  }
-  
-  // 3. 日付ボタンを順番に配置
-  let loopDate = new Date(period.startDateObj);
-  while (loopDate <= period.endDateObj) {
-    const dateStr = formatDateString(loopDate);
-    
-    const btn = document.createElement('div');
-    btn.className = 'holiday-btn';
-    
-    if (holidaysData.includes(dateStr)) {
-      btn.classList.add('is-holiday');
-    }
-    
-    btn.innerHTML = `<span class="h-date">${loopDate.getDate()}</span><span class="h-day">${WEEKDAYS[loopDate.getDay()]}</span>`;
-    
-    btn.addEventListener('click', () => {
-      if (btn.classList.contains('is-holiday')) {
-        btn.classList.remove('is-holiday');
-        holidaysData = holidaysData.filter(hd => hd !== dateStr);
-      } else {
-        btn.classList.add('is-holiday');
-        holidaysData.push(dateStr);
-      }
-    });
-    
-    grid.appendChild(btn);
-    loopDate.setDate(loopDate.getDate() + 1);
-  }
-}
 
 
 // ====== 編集・削除関連 ======
@@ -385,8 +467,18 @@ function openEditModal(dateStr) {
   currentEditingDate = dateStr;
   const data = workData[dateStr];
   document.getElementById('edit-date-display').textContent = `${dateStr} の記録`;
-  document.getElementById('edit-start-time').value = data.start;
-  document.getElementById('edit-end-time').value = data.end;
+  
+  if (data.start) {
+    const [sH, sM] = data.start.split(':');
+    document.getElementById('edit-start-time-h').value = sH;
+    document.getElementById('edit-start-time-m').value = sM;
+  }
+  if (data.end) {
+    const [eH, eM] = data.end.split(':');
+    document.getElementById('edit-end-time-h').value = eH;
+    document.getElementById('edit-end-time-m').value = eM;
+  }
+  
   editModal.classList.remove('hidden');
 }
 
@@ -396,8 +488,13 @@ closeEditBtn.addEventListener('click', () => {
 });
 
 saveEditBtn.addEventListener('click', () => {
-  const startTimeVal = document.getElementById('edit-start-time').value;
-  const endTimeVal = document.getElementById('edit-end-time').value;
+  const sH = document.getElementById('edit-start-time-h').value;
+  const sM = document.getElementById('edit-start-time-m').value;
+  const eH = document.getElementById('edit-end-time-h').value;
+  const eM = document.getElementById('edit-end-time-m').value;
+  
+  const startTimeVal = `${sH}:${sM}`;
+  const endTimeVal = `${eH}:${eM}`;
 
   const updatedData = calculateWorkData(startTimeVal, endTimeVal);
   if (!updatedData) return;
@@ -423,7 +520,11 @@ deleteEditBtn.addEventListener('click', () => {
   }
 });
 
-
 // ====== 初期化処理 ======
-updateCurrentMonthDisplay();
-renderCalendar();
+try {
+  initTimeSelects(); 
+  updateCurrentMonthDisplay();
+  renderCalendar();
+} catch(e) {
+  console.error("初期化時にエラーが発生しました:", e);
+}
