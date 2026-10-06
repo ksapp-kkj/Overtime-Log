@@ -7,29 +7,16 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<!-- ヘッダーとハンバーガーメニュー -->
+<!-- ヘッダー -->
   <header class="main-header">
     <h1>残業時間管理アプリ</h1>
-    <button id="menu-btn" class="menu-btn">
-      <span></span>
-      <span></span>
-      <span></span>
-    </button>
+    <button id="open-settings" class="header-setting-btn">⚙️ 設定</button>
   </header>
 
-  <!-- 隠しメニュー（ドロワー） -->
-  <nav id="side-menu" class="side-menu hidden">
-    <ul>
-      <li><a href="#" id="open-settings">📅 月度設定</a></li>
-    </ul>
-  </nav>
-
-  <!-- 左右に分けるためのコンテナ -->
   <main class="container">
     
     <!-- 左側エリア：サマリーと入力 -->
     <div class="left-col">
-      <!-- 1. 月度とサマリー -->
       <section id="summary-section" class="card">
         <h2>月度サマリー</h2>
         <div class="input-group">
@@ -48,13 +35,16 @@
           <label>出勤日数：</label>
           <span id="work-days-display" class="highlight-text">0</span> 日
         </div>
+        <div class="input-group flex-group">
+          <label>有給取得：</label>
+          <span id="paid-leave-display" class="highlight-text" style="color: #48bb78;">0</span> 日
+        </div>
         <div class="summary-result highlight-box">
           <div class="summary-label">今月の残業時間合計</div>
           <div class="summary-time" id="total-overtime">0時間00分</div>
         </div>
       </section>
 
-      <!-- 2. 日々の入力フォーム -->
       <section id="input-section" class="card">
         <h2>日々の入力</h2>
         <form id="work-form">
@@ -62,13 +52,15 @@
             <label for="work-date">日付：</label>
             <input type="date" id="work-date" required>
           </div>
-          <div class="input-group">
-            <label for="start-time">出勤時間：</label>
-            <input type="time" id="start-time" value="08:30" required>
+          <div class="input-group flex-group">
+            <label>出勤時間：</label>
+            <select id="start-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+            <select id="start-time-m" class="time-select"></select>
           </div>
-          <div class="input-group">
-            <label for="end-time">退勤時間：</label>
-            <input type="time" id="end-time" value="17:30" required>
+          <div class="input-group flex-group">
+            <label>退勤時間：</label>
+            <select id="end-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+            <select id="end-time-m" class="time-select"></select>
           </div>
           <button type="submit" class="btn">登録</button>
         </form>
@@ -78,12 +70,21 @@
     <!-- 右側エリア：カレンダー履歴 -->
     <div class="right-col">
       <section id="calendar-section" class="card">
-        <div class="calendar-header">
-          <button id="prev-month" class="btn-small">◀︎ 先月度</button>
-          <h2 id="calendar-title"></h2>
-          <button id="next-month" class="btn-small">来月度 ▶︎</button>
+        <div class="calendar-header" style="flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+            <button id="prev-month" class="btn-small">◀︎ 先月度</button>
+            <h2 id="calendar-title"></h2>
+            <button id="next-month" class="btn-small">来月度 ▶︎</button>
+          </div>
+          <button id="toggle-holiday-mode-btn" class="btn-small holiday-setting-btn">休日・有給を設定する</button>
+          <button id="toggle-calendar-btn" class="btn-small mobile-only" style="margin-top: 10px;">カレンダーを開く ▼</button>
         </div>
         
+        <!-- ★ 変更：案内の文字色を赤から青（#3182ce）に変更 -->
+        <p id="holiday-mode-guide" class="setting-note center-text hidden" style="margin: 10px 0 5px; color: #3182ce; font-weight: bold;">
+          日付をタップして切り替え（休日 ➔ 有給 ➔ 勤務日）
+        </p>
+
         <div class="calendar-grid">
           <!-- JSでここに日付セルが追加される -->
         </div>
@@ -101,27 +102,31 @@
   <!-- 設定用モーダル画面 -->
   <div id="settings-modal" class="modal hidden">
     <div class="modal-content card">
-      <h2>月度設定</h2>
+      <h2>アプリ設定</h2>
       
+      <h3 class="modal-sub-title" style="margin-top: 10px;">基本の勤務時間</h3>
+      <p class="setting-note center-text">※毎日の入力フォームの初期値になります</p>
       <div class="input-group flex-group">
-        <label for="start-day-setting" class="setting-label">月度の開始日：</label>
+        <label class="setting-label" style="width: 80px;">出勤：</label>
+        <select id="setting-start-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+        <select id="setting-start-time-m" class="time-select"></select>
+      </div>
+      <div class="input-group flex-group" style="margin-bottom: 20px;">
+        <label class="setting-label" style="width: 80px;">退勤：</label>
+        <select id="setting-end-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+        <select id="setting-end-time-m" class="time-select"></select>
+      </div>
+      
+      <hr class="modal-divider">
+
+      <h3 class="modal-sub-title">月度の設定</h3>
+      <div class="input-group flex-group" style="justify-content: center;">
+        <label for="start-day-setting" class="setting-label">開始日：</label>
         <input type="number" id="start-day-setting" min="1" max="31" value="21" class="short-input">
         <span>日</span>
       </div>
-      <p class="setting-note">
-        ※例:「21日」に設定すると、毎月21日〜翌月20日が1つの月度に。
-      </p>
-
-      <!-- 休日を選択するエリア -->
-      <hr class="modal-divider">
-      <h3 class="modal-sub-title">休日の選択</h3>
-      <p class="setting-note center-text">
-        対象期間 (<span id="modal-period-display"></span>) の休日をタップ。
-      </p>
       
-      <div id="holiday-grid" class="holiday-grid"></div>
-      
-      <div class="modal-buttons">
+      <div class="modal-buttons" style="margin-top: 25px;">
         <button id="save-settings" class="btn modal-btn save-btn">保存</button>
         <button id="close-settings" class="btn modal-btn cancel-btn">キャンセル</button>
       </div>
@@ -132,19 +137,17 @@
   <div id="edit-modal" class="modal hidden">
     <div class="modal-content card">
       <h2>記録の編集・削除</h2>
-      
       <p id="edit-date-display"></p>
-
-      <!-- HTML側の出勤時間は表示用と編集用のミスがあったので修正 -->
       <div class="input-group flex-group">
-        <label for="edit-start-time" class="setting-label">出勤時間：</label>
-        <input type="time" id="edit-start-time" required class="short-input time-input">
+        <label class="setting-label">出勤時間：</label>
+        <select id="edit-start-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+        <select id="edit-start-time-m" class="time-select"></select>
       </div>
       <div class="input-group flex-group">
-        <label for="edit-end-time" class="setting-label">退勤時間：</label>
-        <input type="time" id="edit-end-time" required class="short-input time-input">
+        <label class="setting-label">退勤時間：</label>
+        <select id="edit-end-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+        <select id="edit-end-time-m" class="time-select"></select>
       </div>
-
       <div class="modal-buttons edit-modal-buttons">
         <button id="save-edit-btn" class="btn modal-btn save-btn">保存</button>
         <button id="delete-edit-btn" class="btn modal-btn delete-btn">削除</button>
