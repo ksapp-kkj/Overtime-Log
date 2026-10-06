@@ -47,7 +47,7 @@ header h1 {
   padding-bottom: 8px;
   margin-top: 0;
   color: #4a5568;
-  text-align: center; /* ★これを追加（見出しを中央揃えに） */
+  text-align: center; /* 見出しを中央揃えに */
 }
 
 /* 入力フォーム周り */
@@ -227,7 +227,7 @@ input[type="time"] {
   align-items: center;
   position: relative;
   margin: 0 auto 30px auto; 
-  /* ★ 追加：カレンダーを含むメインエリアと同じ最大幅に合わせる */
+  /* カレンダーを含むメインエリアと同じ最大幅に合わせる */
   max-width: 1000px;
 }
 
@@ -405,7 +405,7 @@ input[type="number"].short-input {
   color: #2c3e50;
   border-bottom: 1px solid #e2e8f0;
   padding-bottom: 10px;
-  text-align: center; /* ★これを追加（日付のテキストを中央揃えに） */
+  text-align: center; /* 日付のテキストを中央揃えに */
 }
 
 /* 時間入力欄の幅調整 */
@@ -413,7 +413,7 @@ input[type="time"].time-input {
   width: 120px;
 }
 
-/* ★ 変更：編集モーダル内のボタンエリアを縦並びに！ */
+/* 編集モーダル内のボタンエリアを縦並びに */
 .edit-modal-buttons {
   margin-top: 20px;
   display: flex;
@@ -421,7 +421,7 @@ input[type="time"].time-input {
   gap: 10px; /* ボタン同士の隙間を均等にあける */
 }
 
-/* ★ 追加：縦並びにしたので、右の余白を消してボタンの幅を100%に揃える */
+/* 縦並びにしたので、右の余白を消してボタンの幅を100%に揃える */
 .edit-modal-buttons .modal-btn {
   margin-right: 0;
   width: 100%;
@@ -435,6 +435,79 @@ input[type="time"].time-input {
 /* 削除ボタンにカーソルを乗せた時の色 */
 .delete-btn:hover {
   background-color: #c53030;
+}
+
+/* ======== 休日選択グリッド（月度設定モーダル内） ======== */
+.holiday-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr); /* 7列のマス目 */
+  gap: 5px;
+  margin-bottom: 20px;
+}
+
+.holiday-btn {
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  padding: 8px 0;
+  text-align: center;
+  cursor: pointer;
+  color: #4a5568;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.holiday-btn .h-date {
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.holiday-btn .h-day {
+  font-size: 0.7rem;
+}
+
+/* 休日として選択された時のデザイン（赤く目立たせる） */
+.holiday-btn.is-holiday {
+  background-color: #fc8181;
+  color: #fff;
+  border-color: #e53e3e;
+}
+
+/* カレンダーの空白マス（枠線や背景を消す） */
+.holiday-btn.empty-btn {
+  background-color: transparent;
+  border: none;
+  cursor: default;
+}
+
+/* ======== リファクタリングによる追加スタイル ======== */
+
+/* 出勤日数の強調テキスト */
+.highlight-text {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-right: 5px;
+}
+
+/* モーダル内の区切り線 */
+.modal-divider {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+  margin: 20px 0;
+}
+
+/* モーダル内のサブタイトル */
+.modal-sub-title {
+  font-size: 1rem;
+  color: #4a5568;
+  margin-top: 0;
+  text-align: center;
+}
+
+/* 中央揃えユーティリティ */
+.center-text {
+  text-align: center;
 }
 
 /* ======== レスポンシブ（スマホ対応） ======== */
