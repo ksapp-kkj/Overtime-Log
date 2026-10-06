@@ -10,7 +10,6 @@
 <!-- ヘッダーとハンバーガーメニュー -->
   <header class="main-header">
     <h1>残業時間管理アプリ</h1>
-    <!-- ハンバーガーメニューボタン -->
     <button id="menu-btn" class="menu-btn">
       <span></span>
       <span></span>
@@ -22,7 +21,6 @@
   <nav id="side-menu" class="side-menu hidden">
     <ul>
       <li><a href="#" id="open-settings">📅 月度設定</a></li>
-      <!-- 今後、別の設定が増えたらここに <li> を追加していく -->
     </ul>
   </nav>
 
@@ -36,22 +34,20 @@
         <h2>月度サマリー</h2>
         <div class="input-group">
           <label>今日の日付：</label>
-          <span id="today-date">2026年9月15日(火)</span>
+          <span id="today-date"></span>
         </div>
         <div class="input-group">
           <label>対象月度：</label>
-          <span id="current-month">2026年9月度</span>
+          <span id="current-month"></span>
         </div>
         <div class="input-group">
           <label>対象期間：</label>
-          <span id="current-period">8/21〜9/20</span>
+          <span id="current-period"></span>
         </div>
-        <div class="input-group">
-          <label for="work-days">出勤日数：</label>
-          <!-- style属性を消して class="short-input" を追加 -->
-          <input type="number" id="work-days" min="1" value="20" class="short-input"> 日
+        <div class="input-group flex-group">
+          <label>出勤日数：</label>
+          <span id="work-days-display" class="highlight-text">0</span> 日
         </div>
-        <!-- ★ 変更：残業時間合計を目立たせる枠（highlight-box）に変更 -->
         <div class="summary-result highlight-box">
           <div class="summary-label">今月の残業時間合計</div>
           <div class="summary-time" id="total-overtime">0時間00分</div>
@@ -64,7 +60,6 @@
         <form id="work-form">
           <div class="input-group">
             <label for="work-date">日付：</label>
-            <!-- JSで自動的に今日の日付が入るようにする -->
             <input type="date" id="work-date" required>
           </div>
           <div class="input-group">
@@ -84,20 +79,12 @@
     <div class="right-col">
       <section id="calendar-section" class="card">
         <div class="calendar-header">
-          <button id="prev-month" class="btn-small">◀︎ 先月</button>
-          <h2 id="calendar-title">2026年7月</h2>
-          <button id="next-month" class="btn-small">来月 ▶︎</button>
+          <button id="prev-month" class="btn-small">◀︎ 先月度</button>
+          <h2 id="calendar-title"></h2>
+          <button id="next-month" class="btn-small">来月度 ▶︎</button>
         </div>
         
         <div class="calendar-grid">
-          <!-- 曜日のヘッダー -->
-          <div class="weekday">日</div>
-          <div class="weekday">月</div>
-          <div class="weekday">火</div>
-          <div class="weekday">水</div>
-          <div class="weekday">木</div>
-          <div class="weekday">金</div>
-          <div class="weekday">土</div>
           <!-- JSでここに日付セルが追加される -->
         </div>
       </section>
@@ -116,16 +103,23 @@
     <div class="modal-content card">
       <h2>月度設定</h2>
       
-      <!-- style属性を消して専用クラスを追加 -->
       <div class="input-group flex-group">
         <label for="start-day-setting" class="setting-label">月度の開始日：</label>
         <input type="number" id="start-day-setting" min="1" max="31" value="21" class="short-input">
         <span>日</span>
       </div>
-      
       <p class="setting-note">
-        ※例:「21日」に設定すると、毎月21日〜翌月20日が1つの月度になります。
+        ※例:「21日」に設定すると、毎月21日〜翌月20日が1つの月度に。
       </p>
+
+      <!-- 休日を選択するエリア -->
+      <hr class="modal-divider">
+      <h3 class="modal-sub-title">休日の選択</h3>
+      <p class="setting-note center-text">
+        対象期間 (<span id="modal-period-display"></span>) の休日をタップ。
+      </p>
+      
+      <div id="holiday-grid" class="holiday-grid"></div>
       
       <div class="modal-buttons">
         <button id="save-settings" class="btn modal-btn save-btn">保存</button>
@@ -134,16 +128,14 @@
     </div>
   </div>
 
-  <!-- （既存の月度設定モーダルのコード） -->
-
-  <!-- ★ 追加：データ編集用モーダル画面 -->
+  <!-- データ編集用モーダル画面 -->
   <div id="edit-modal" class="modal hidden">
     <div class="modal-content card">
       <h2>記録の編集・削除</h2>
       
-      <!-- スタイルを消してCSS側で指定する -->
       <p id="edit-date-display"></p>
 
+      <!-- HTML側の出勤時間は表示用と編集用のミスがあったので修正 -->
       <div class="input-group flex-group">
         <label for="edit-start-time" class="setting-label">出勤時間：</label>
         <input type="time" id="edit-start-time" required class="short-input time-input">
@@ -153,10 +145,8 @@
         <input type="time" id="edit-end-time" required class="short-input time-input">
       </div>
 
-      <!-- クラス edit-modal-buttons を追加 -->
       <div class="modal-buttons edit-modal-buttons">
         <button id="save-edit-btn" class="btn modal-btn save-btn">保存</button>
-        <!-- delete-btn クラスを追加 -->
         <button id="delete-edit-btn" class="btn modal-btn delete-btn">削除</button>
         <button id="cancel-edit-btn" class="btn modal-btn cancel-btn">キャンセル</button>
       </div>
