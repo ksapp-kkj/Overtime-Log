@@ -11,7 +11,7 @@ header h1 {
   text-align: center;
   color: #2c3e50;
   font-weight: 300;
-  margin-bottom: 30px;
+  margin-bottom: 0; /* 下の余白を調整 */
 }
 
 /* 左右2カラムレイアウト */
@@ -122,7 +122,6 @@ input[type="date"] {
   gap: 5px;
 }
 
-/* ★ 変更：休日編集モード中のカレンダーの見た目（青系） */
 .calendar-grid.holiday-edit-mode {
   background-color: #ebf8ff;
   outline: 3px dashed #63b3ed;
@@ -162,7 +161,6 @@ input[type="date"] {
   color: #4a5568;
 }
 
-/* カレンダー上の休日・有給バッジ */
 .status-badge {
   display: inline-block;
   font-size: 0.65rem;
@@ -236,6 +234,7 @@ input[type="date"] {
   display: none;
 }
 
+/* ★ 変更：ヘッダーの構造をフレックスボックスに修正して重なりを防止 */
 .main-header {
   display: flex;
   justify-content: center;
@@ -243,18 +242,13 @@ input[type="date"] {
   position: relative;
   margin: 0 auto 30px auto; 
   max-width: 1000px;
+  min-height: 50px;
 }
 
-.main-header h1 {
-  margin: 0;
-}
-
-/* ======== ヘッダー内の設定ボタン ======== */
+/* ★ 変更：設定ボタンの絶対配置を調整 */
 .header-setting-btn {
   position: absolute;
   right: 0;
-  top: 50%;
-  transform: translateY(-50%);
   background-color: #edf2f7;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
@@ -391,7 +385,7 @@ input[type="number"].short-input {
   background-color: #c53030;
 }
 
-/* ★ 変更：メインカレンダーの休日設定切り替えボタン（青系） */
+/* ★ 変更：休日設定切り替えボタンに Sticky（スクロール追従）を設定 */
 .holiday-setting-btn {
   margin-top: 10px;
   width: 100%;
@@ -399,13 +393,20 @@ input[type="number"].short-input {
   color: #2b6cb0;
   background-color: #f8fcff;
   font-weight: bold;
+  padding: 10px;
   transition: all 0.2s;
+  /* スクロール追従の設定 */
+  position: sticky;
+  top: 10px;
+  z-index: 50; 
 }
 
 .holiday-setting-btn.active {
   background-color: #3182ce;
   color: #fff;
   border-color: #3182ce;
+  /* 追従している時に浮いて見えるように影をつける */
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
 }
 
 .highlight-text {
@@ -431,7 +432,6 @@ input[type="number"].short-input {
   text-align: center;
 }
 
-/* PC時は非表示にする要素 */
 .mobile-only {
   display: none;
 }
@@ -441,6 +441,18 @@ input[type="number"].short-input {
 
 /* ======== レスポンシブ（スマホ対応） ======== */
 @media screen and (max-width: 768px) {
+  
+  /* ★ 追加：スマホの時はヘッダーを縦並びにして重なりを防ぐ */
+  .main-header {
+    flex-direction: column;
+    gap: 15px;
+  }
+  .header-setting-btn {
+    position: static;
+    width: 100%;
+    text-align: center;
+  }
+  
   .container {
     flex-direction: column;
   }
