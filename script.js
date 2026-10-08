@@ -319,7 +319,6 @@ function renderCalendar() {
       dayDiv.classList.add('has-data');
       dayDiv.innerHTML += `<div class="overtime-display">${workData[fullDateStr].overtime}</div>`;
     } 
-    // ★ 変更：有給の「7時間50分」表示のブロックを削除しました
     
     dayDiv.addEventListener('click', function() {
       if (isHolidayEditMode) {
@@ -357,26 +356,41 @@ document.getElementById('next-month').addEventListener('click', () => {
   renderCalendar();
 });
 
+// ★ 追加：アコーディオン開閉と休日設定モードの連動
 const toggleHolidayBtn = document.getElementById('toggle-holiday-mode-btn');
 const holidayGuide = document.getElementById('holiday-mode-guide');
+const toggleCalBtn = document.getElementById('toggle-calendar-btn'); // ボタンを取得しておく
 
 if (toggleHolidayBtn) {
   toggleHolidayBtn.addEventListener('click', () => {
     isHolidayEditMode = !isHolidayEditMode;
+    const grid = document.querySelector('.calendar-grid');
+    
     if (isHolidayEditMode) {
       toggleHolidayBtn.textContent = '✅ 休日設定を完了する';
       toggleHolidayBtn.classList.add('active');
       holidayGuide.classList.remove('hidden');
+      
+      // ★ 連動：設定を始めたら、もしカレンダーが閉じていれば自動で開く
+      if (grid && grid.classList.contains('collapsed')) {
+        grid.classList.remove('collapsed');
+        if (toggleCalBtn) toggleCalBtn.textContent = 'カレンダーを閉じる ▲';
+      }
     } else {
       toggleHolidayBtn.textContent = '休日・有給を設定する';
       toggleHolidayBtn.classList.remove('active');
       holidayGuide.classList.add('hidden');
+      
+      // ★ 連動：スマホの場合、設定を完了したら自動でカレンダーを閉じる
+      if (window.innerWidth <= 768 && grid && !grid.classList.contains('collapsed')) {
+        grid.classList.add('collapsed');
+        if (toggleCalBtn) toggleCalBtn.textContent = 'カレンダーを開く ▼';
+      }
     }
     renderCalendar(); 
   });
 }
 
-const toggleCalBtn = document.getElementById('toggle-calendar-btn');
 if (toggleCalBtn) {
   toggleCalBtn.addEventListener('click', () => {
     const grid = document.querySelector('.calendar-grid');
