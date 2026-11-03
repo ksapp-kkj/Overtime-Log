@@ -20,12 +20,8 @@
       <section id="summary-section" class="card">
         <h2>月度サマリー</h2>
         <div class="input-group">
-          <label>今日の日付：</label>
-          <span id="today-date"></span>
-        </div>
-        <div class="input-group">
-          <label>対象月度：</label>
-          <span id="current-month"></span>
+          <label>表示月度：</label>
+          <span id="current-month" style="font-weight: bold;"></span>
         </div>
         <div class="input-group">
           <label>対象期間：</label>
@@ -39,8 +35,20 @@
           <label>有給取得：</label>
           <span id="paid-leave-display" class="highlight-text" style="color: #48bb78;">0</span> 日
         </div>
+        
+        <div class="summary-breakdown">
+          <div class="breakdown-row">
+            <span>前月からの繰越：</span>
+            <span id="carryover-overtime">0時間00分</span>
+          </div>
+          <div class="breakdown-row">
+            <span>当月発生分：</span>
+            <span id="net-overtime">0時間00分</span>
+          </div>
+        </div>
+
         <div class="summary-result highlight-box">
-          <div class="summary-label">今月の残業時間合計</div>
+          <div class="summary-label">累計残業時間</div>
           <div class="summary-time" id="total-overtime">0時間00分</div>
         </div>
       </section>
@@ -52,17 +60,24 @@
             <label for="work-date">日付：</label>
             <input type="date" id="work-date" required>
           </div>
-          <div class="input-group flex-group">
-            <label>出勤時間：</label>
-            <select id="start-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
-            <select id="start-time-m" class="time-select"></select>
+          <!-- ★変更：出勤と退勤をそれぞれ単独で記録できるボタンを横に追加 -->
+          <div class="input-group flex-group" style="justify-content: space-between; flex-wrap: wrap; gap: 5px;">
+            <label style="width: 60px;">出勤：</label>
+            <div style="display: flex; align-items: center;">
+              <select id="start-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+              <select id="start-time-m" class="time-select"></select>
+            </div>
+            <button type="button" id="btn-record-start" class="btn-record bg-green">▶ 出勤記録</button>
           </div>
-          <div class="input-group flex-group">
-            <label>退勤時間：</label>
-            <select id="end-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
-            <select id="end-time-m" class="time-select"></select>
+          <div class="input-group flex-group" style="justify-content: space-between; flex-wrap: wrap; gap: 5px;">
+            <label style="width: 60px;">退勤：</label>
+            <div style="display: flex; align-items: center;">
+              <select id="end-time-h" class="time-select"></select><span style="margin: 0 5px;">:</span>
+              <select id="end-time-m" class="time-select"></select>
+            </div>
+            <button type="button" id="btn-record-end" class="btn-record bg-orange">■ 退勤記録</button>
           </div>
-          <button type="submit" class="btn">登録</button>
+          <button type="submit" class="btn">出退勤を一括登録</button>
         </form>
       </section>
     </div>
@@ -80,7 +95,6 @@
           <button id="toggle-calendar-btn" class="btn-small mobile-only" style="margin-top: 10px;">カレンダーを開く ▼</button>
         </div>
         
-        <!-- ★ 変更：案内の文字色を赤から青（#3182ce）に変更 -->
         <p id="holiday-mode-guide" class="setting-note center-text hidden" style="margin: 10px 0 5px; color: #3182ce; font-weight: bold;">
           日付をタップして切り替え（休日 ➔ 有給 ➔ 勤務日）
         </p>
@@ -124,6 +138,24 @@
         <label for="start-day-setting" class="setting-label">開始日：</label>
         <input type="number" id="start-day-setting" min="1" max="31" value="21" class="short-input">
         <span>日</span>
+      </div>
+
+      <hr class="modal-divider">
+
+      <h3 class="modal-sub-title">マイナス残業の繰り越し</h3>
+      <div class="input-group flex-group" style="justify-content: center; margin-bottom: 15px;">
+        <select id="carryover-setting" class="time-select" style="width: 100%; max-width: 250px;">
+          <option value="none">しない（毎月0からスタート）</option>
+          <option value="active">する（精算月でリセット）</option>
+        </select>
+      </div>
+      
+      <div id="settlement-months-container" class="hidden">
+        <p class="setting-note center-text" style="margin-bottom: 8px; font-weight: bold;">精算する月度を選択してください</p>
+        <p class="setting-note center-text" style="margin-top: 0;">※選択した月度の末日で繰り越しがリセットされます</p>
+        <div class="settlement-grid" id="settlement-checkboxes">
+          <!-- JSでここにチェックボックスが生成されます -->
+        </div>
       </div>
       
       <div class="modal-buttons" style="margin-top: 25px;">
