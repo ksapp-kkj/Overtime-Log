@@ -95,6 +95,24 @@ input[type="date"] {
   background-color: #2b6cb0;
 }
 
+/* ★追加：出勤・退勤の単独打刻ボタンのスタイル */
+.btn-record {
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: none;
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.bg-green { background-color: #48bb78; }
+.bg-green:hover { background-color: #38a169; }
+.bg-orange { background-color: #ed8936; }
+.bg-orange:hover { background-color: #dd6b20; }
+
 .calendar-header {
   display: flex;
   justify-content: space-between;
@@ -122,7 +140,6 @@ input[type="date"] {
   gap: 5px;
 }
 
-/* ★ 変更：休日編集モード中のカレンダーの見た目（青系） */
 .calendar-grid.holiday-edit-mode {
   background-color: #ebf8ff;
   outline: 3px dashed #63b3ed;
@@ -249,7 +266,6 @@ input[type="date"] {
   margin: 0;
 }
 
-/* ======== ヘッダー内の設定ボタン ======== */
 .header-setting-btn {
   position: absolute;
   right: 0;
@@ -340,12 +356,49 @@ input[type="number"].short-input {
   background-color: #718096;
 }
 
+.summary-breakdown {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px dashed #cbd5e0;
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+.breakdown-row span:last-child {
+  font-weight: bold;
+}
+
+.settlement-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+  background-color: #f8fafc;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.settlement-label {
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #4a5568;
+}
+.settlement-label input {
+  margin-right: 4px;
+}
+
 .highlight-box {
   background-color: #ebf8ff;
   border: 2px solid #3182ce;
   border-radius: 8px;
   padding: 20px;
-  margin-top: 20px;
+  margin-top: 15px;
   text-align: center;
 }
 
@@ -391,7 +444,6 @@ input[type="number"].short-input {
   background-color: #c53030;
 }
 
-/* ★ 変更：メインカレンダーの休日設定切り替えボタン（青系） */
 .holiday-setting-btn {
   margin-top: 10px;
   width: 100%;
@@ -400,12 +452,16 @@ input[type="number"].short-input {
   background-color: #f8fcff;
   font-weight: bold;
   transition: all 0.2s;
+  position: sticky;
+  top: 10px;
+  z-index: 50; 
 }
 
 .holiday-setting-btn.active {
   background-color: #3182ce;
   color: #fff;
   border-color: #3182ce;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
 }
 
 .highlight-text {
@@ -431,7 +487,6 @@ input[type="number"].short-input {
   text-align: center;
 }
 
-/* PC時は非表示にする要素 */
 .mobile-only {
   display: none;
 }
@@ -442,19 +497,18 @@ input[type="number"].short-input {
 /* ======== レスポンシブ（スマホ対応） ======== */
 @media screen and (max-width: 768px) {
   
-  /* ★ 修正：スマホの時はヘッダーを縦並びにし、重なりを解消 */
   .main-header {
     flex-direction: column;
-    gap: 15px; /* タイトルとボタンの間に余白を作る */
+    gap: 15px; 
   }
   
   .header-setting-btn {
-    position: static; /* 絶対配置を解除して、自然な流れに乗せる */
-    width: 100%;      /* スマホでは押しやすいように横幅いっぱいに */
+    position: static; 
+    width: 100%;      
     text-align: center;
-    transform: none;  /* 中央寄せのズレを解消 */
+    transform: none;  
   }
-  
+
   .container {
     flex-direction: column;
   }
@@ -462,6 +516,10 @@ input[type="number"].short-input {
   .left-col, .right-col {
     width: 100%;
     min-width: 100%;
+  }
+
+  .settlement-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .mobile-only {
