@@ -27,6 +27,9 @@ if (isNaN(monthStartDay)) monthStartDay = 21;
 let defaultStartTime = localStorage.getItem('defaultStartTime') || "08:30";
 let defaultEndTime = localStorage.getItem('defaultEndTime') || "17:30";
 
+let isCarryOverEnabled = localStorage.getItem('isCarryOverEnabled') !== 'false';
+let settlementMonths = safeJSONParse('settlementMonths', [3, 6, 9, 12]);
+
 let isHolidayEditMode = false;
 
 if (Array.isArray(holidaysData)) {
@@ -36,8 +39,6 @@ if (Array.isArray(holidaysData)) {
   localStorage.setItem('holidaysData', JSON.stringify(holidaysData));
 }
 
-let currentPeriodStartObj = null;
-let currentPeriodEndObj = null;
 let currentDisplayDate = new Date();
 
 
@@ -72,6 +73,7 @@ function formatDateString(dateObj) {
   const d = String(dateObj.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+
 function getTargetPeriod(dateObj, startDaySetting) {
   let year = dateObj.getFullYear();
   let month = dateObj.getMonth() + 1;
@@ -107,6 +109,142 @@ function getTargetPeriod(dateObj, startDaySetting) {
   }
   return { targetYear, targetMonth, startMonth, startDateObj, endDateObj };
 }
+
+function getPeriodDates(targetYear, targetMonth, startDaySetting) {
+  let startDateObj, endDateObj;
+  if (startDaySetting === 1) {
+    startDateObj = new Date(targetYear, targetMonth - 1, 1);
+    endDateObj = new Date(targetYear, targetMonth, 0);
+  } else {
+    let startY = targetYear;
+    let startM = targetMonth - 2; 
+    if (startM < 0) {
+      startM += 12;
+      startY -= 1;
+    }
+    startDateObj = new Date(startY, startM, startDaySetting);
+    
+    let endY = targetYear;
+    let endM = targetMonth - 1;
+    if (endM < 0) { 
+      endM += 12;
+      endY -= 1;
+    }
+    endDateObj = new Date(endY, endM, startDaySetting - 1);
+  }
+  return { startDateObj, endDateObj };
+}
+
+function getNetOvertimeForMonth(targetYear, targetMonth) {
+  const { startDateObj, endDateObj } = getPeriodDates(targetYear, targetMonth, monthStartDay);
+  const pStart = startDateObj.getTime();
+  const pEnd = endDateObj.setHours(23, 59, 59, 999); 
+  
+  let netMins = 0;
+  for (const dateStr in workData) {
+    const workDateMs = new Date(dateStr).getTime();
+    if (workDateMs >= pStart && workDateMs <= pEnd) {
+      const data = workData[dateStr];
+      netMins += data.overtimeMins !== undefined ? data.overtimeMins : parseOvertimeString(data.overtime);
+    }
+  }
+  return netMins;
+}
+
+function getMonthlySummary(targetYear, targetMonth) {
+  if (!isCarryOverEnabled) {
+    let netMins = getNetOvertimeForMonth(targetYear, targetMonth);
+    return { net: netMins, carryOver: 0, cumulative: netMins };
+  }
+  
+  let blockStartM = targetMonth;
+  let blockStartY = targetYear;
+  let foundSettlement = false;
+  
+  for (let i = 1; i <= 24; i++) {
+    let checkM = targetMonth - i;
+    let checkY = targetYear;
+    while (checkM <= 0) {
+      checkM += 12;
+      checkY--;
+    }
+    if (settlementMonths.includes(checkM)) {
+      blockStartM = checkM + 1;
+      blockStartY = checkY;
+      if (blockStartM > 12) {
+        blockStartM -= 12;
+        blockStartY++;
+      }
+      foundSettlement = true;
+      break;
+    }
+  }
+  
+  if (!foundSettlement) {
+    blockStartY = targetYear - 2;
+    blockStartM = targetMonth;
+  }
+  
+  let carryOverMins = 0;
+  let calcY = blockStartY;
+  let calcM = blockStartM;
+  
+  while (calcY < targetYear || (calcY === targetYear && calcM <= targetMonth)) {
+    let net = getNetOvertimeForMonth(calcY, calcM);
+    
+    if (calcY === targetYear && calcM === targetMonth) {
+      return {
+        net: net,
+        carryOver: carryOverMins,
+        cumulative: carryOverMins + net
+      };
+    }
+    
+    let cumulative = carryOverMins + net;
+    carryOverMins = cumulative < 0 ? cumulative : 0;
+    
+    calcM++;
+    if (calcM > 12) {
+      calcM = 1;
+      calcY++;
+    }
+  }
+}
+
+// ★ 追加：入力フォームに既存の記録を自動セットする関数
+function loadFormData(dateStr) {
+  const data = workData[dateStr];
+  let sH, sM, eH, eM;
+  const [defStartH, defStartM] = defaultStartTime.split(':');
+  const [defEndH, defEndM] = defaultEndTime.split(':');
+
+  if (data) {
+    if (data.start) {
+      [sH, sM] = data.start.split(':');
+    } else {
+      [sH, sM] = [defStartH, defStartM];
+    }
+    if (data.end) {
+      [eH, eM] = data.end.split(':');
+    } else {
+      [eH, eM] = [defEndH, defEndM];
+    }
+  } else {
+    [sH, sM] = [defStartH, defStartM];
+    [eH, eM] = [defEndH, defEndM];
+  }
+
+  document.getElementById('start-time-h').value = sH;
+  document.getElementById('start-time-m').value = sM;
+  document.getElementById('end-time-h').value = eH;
+  document.getElementById('end-time-m').value = eM;
+}
+
+// 日付を変更した時にデータを読み込む
+document.getElementById('work-date').addEventListener('change', function() {
+  loadFormData(this.value);
+});
+
 
 function initTimeSelects() {
   const hours = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
@@ -150,14 +288,8 @@ function initTimeSelects() {
 
 // ====== メイン表示＆集計ロジック ======
 function updateCurrentMonthDisplay() {
-  const today = new Date();
-  document.getElementById('today-date').textContent = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日(${WEEKDAYS[today.getDay()]})`;
-
-  if (!document.getElementById('work-date').value) {
-    document.getElementById('work-date').value = formatDateString(today);
-  }
-
-  const period = getTargetPeriod(today, monthStartDay);
+  const period = getTargetPeriod(currentDisplayDate, monthStartDay);
+  
   document.getElementById('current-month').textContent = `${period.targetYear}年${period.targetMonth}月度`;
   
   if (monthStartDay === 1) {
@@ -184,23 +316,19 @@ function updateCurrentMonthDisplay() {
   document.getElementById('work-days-display').textContent = workingDays;
   document.getElementById('paid-leave-display').textContent = paidLeaveCount;
 
-  let totalOvertimeMins = 0;
-  const pStart = new Date(period.startDateObj).setHours(0,0,0,0);
-  const pEnd = new Date(period.endDateObj).setHours(0,0,0,0);
-
-  for (const dateStr in workData) {
-    const workDateMs = new Date(dateStr).setHours(0, 0, 0, 0);
-    if (workDateMs >= pStart && workDateMs <= pEnd) {
-      const data = workData[dateStr];
-      if (data.overtimeMins !== undefined) {
-        totalOvertimeMins += data.overtimeMins;
-      } else {
-        totalOvertimeMins += parseOvertimeString(data.overtime);
-      }
-    }
+  const summary = getMonthlySummary(period.targetYear, period.targetMonth);
+  
+  document.getElementById('carryover-overtime').textContent = minutesToDisplay(summary.carryOver);
+  document.getElementById('net-overtime').textContent = minutesToDisplay(summary.net);
+  
+  const totalDisplay = document.getElementById('total-overtime');
+  totalDisplay.textContent = minutesToDisplay(summary.cumulative);
+  
+  if (summary.cumulative < 0) {
+    totalDisplay.style.color = '#e53e3e';
+  } else {
+    totalDisplay.style.color = '#2b6cb0';
   }
-
-  document.getElementById('total-overtime').textContent = minutesToDisplay(totalOvertimeMins);
 }
 
 
@@ -240,7 +368,68 @@ function calculateWorkData(startTimeVal, endTimeVal) {
 }
 
 
-// ====== 新規登録処理 ======
+// ====== ★追加：単独打刻（出勤のみ・退勤のみ）処理 ======
+document.getElementById('btn-record-start').addEventListener('click', function() {
+  const dateVal = document.getElementById('work-date').value;
+  if (!dateVal) return;
+  
+  const startH = document.getElementById('start-time-h').value;
+  const startM = document.getElementById('start-time-m').value;
+  const startTimeVal = `${startH}:${startM}`;
+  
+  let data = workData[dateVal] || {};
+  data.start = startTimeVal;
+  
+  if (data.end) {
+    const newData = calculateWorkData(data.start, data.end);
+    if (!newData) return; 
+    data = newData;
+  } else {
+    data.actual = null;
+    data.overtime = null;
+    data.overtimeMins = 0;
+  }
+  
+  workData[dateVal] = data;
+  localStorage.setItem('workData', JSON.stringify(workData));
+  
+  currentDisplayDate = new Date(dateVal);
+  renderCalendar();
+  updateCurrentMonthDisplay(); 
+  alert(`${dateVal} の出勤（${startTimeVal}）を記録しました！`);
+});
+
+document.getElementById('btn-record-end').addEventListener('click', function() {
+  const dateVal = document.getElementById('work-date').value;
+  if (!dateVal) return;
+  
+  const endH = document.getElementById('end-time-h').value;
+  const endM = document.getElementById('end-time-m').value;
+  const endTimeVal = `${endH}:${endM}`;
+  
+  let data = workData[dateVal] || {};
+  data.end = endTimeVal;
+  
+  if (data.start) {
+    const newData = calculateWorkData(data.start, data.end);
+    if (!newData) return; 
+    data = newData;
+  } else {
+    data.actual = null;
+    data.overtime = null;
+    data.overtimeMins = 0;
+  }
+  
+  workData[dateVal] = data;
+  localStorage.setItem('workData', JSON.stringify(workData));
+  
+  currentDisplayDate = new Date(dateVal);
+  renderCalendar();
+  updateCurrentMonthDisplay(); 
+  alert(`${dateVal} の退勤（${endTimeVal}）を記録しました！`);
+});
+
+// ====== 一括登録処理（従来通り） ======
 document.getElementById('work-form').addEventListener('submit', function(event) {
   event.preventDefault();
   const dateVal = document.getElementById('work-date').value;
@@ -263,7 +452,7 @@ document.getElementById('work-form').addEventListener('submit', function(event) 
   currentDisplayDate = new Date(dateVal);
   renderCalendar();
   updateCurrentMonthDisplay(); 
-  alert("登録しました！");
+  alert("出退勤を一括登録しました！");
 });
 
 
@@ -315,10 +504,18 @@ function renderCalendar() {
 
     dayDiv.innerHTML = `<div class="date-number">${displayDate} <span class="mobile-weekday">(${dayOfWeekStr})</span> ${badgeHtml}</div>`;
     
+    // ★ 変更：出勤のみ、退勤のみの状態をカレンダーに表示
     if (workData[fullDateStr]) {
       dayDiv.classList.add('has-data');
-      dayDiv.innerHTML += `<div class="overtime-display">${workData[fullDateStr].overtime}</div>`;
-    } 
+      const d = workData[fullDateStr];
+      if (d.overtime !== null && d.overtime !== undefined) {
+        dayDiv.innerHTML += `<div class="overtime-display">${d.overtime}</div>`;
+      } else if (d.start && !d.end) {
+        dayDiv.innerHTML += `<div class="overtime-display" style="color:#48bb78; font-size:0.75rem;">出勤のみ</div>`;
+      } else if (!d.start && d.end) {
+        dayDiv.innerHTML += `<div class="overtime-display" style="color:#ed8936; font-size:0.75rem;">退勤のみ</div>`;
+      }
+    }
     
     dayDiv.addEventListener('click', function() {
       if (isHolidayEditMode) {
@@ -348,18 +545,19 @@ document.getElementById('prev-month').addEventListener('click', () => {
   currentDisplayDate.setDate(15); 
   currentDisplayDate.setMonth(currentDisplayDate.getMonth() - 1);
   renderCalendar();
+  updateCurrentMonthDisplay(); 
 });
 
 document.getElementById('next-month').addEventListener('click', () => {
   currentDisplayDate.setDate(15);
   currentDisplayDate.setMonth(currentDisplayDate.getMonth() + 1);
   renderCalendar();
+  updateCurrentMonthDisplay(); 
 });
 
-// ★ 追加：アコーディオン開閉と休日設定モードの連動
 const toggleHolidayBtn = document.getElementById('toggle-holiday-mode-btn');
 const holidayGuide = document.getElementById('holiday-mode-guide');
-const toggleCalBtn = document.getElementById('toggle-calendar-btn'); // ボタンを取得しておく
+const toggleCalBtn = document.getElementById('toggle-calendar-btn'); 
 
 if (toggleHolidayBtn) {
   toggleHolidayBtn.addEventListener('click', () => {
@@ -371,7 +569,6 @@ if (toggleHolidayBtn) {
       toggleHolidayBtn.classList.add('active');
       holidayGuide.classList.remove('hidden');
       
-      // ★ 連動：設定を始めたら、もしカレンダーが閉じていれば自動で開く
       if (grid && grid.classList.contains('collapsed')) {
         grid.classList.remove('collapsed');
         if (toggleCalBtn) toggleCalBtn.textContent = 'カレンダーを閉じる ▲';
@@ -381,7 +578,6 @@ if (toggleHolidayBtn) {
       toggleHolidayBtn.classList.remove('active');
       holidayGuide.classList.add('hidden');
       
-      // ★ 連動：スマホの場合、設定を完了したら自動でカレンダーを閉じる
       if (window.innerWidth <= 768 && grid && !grid.classList.contains('collapsed')) {
         grid.classList.add('collapsed');
         if (toggleCalBtn) toggleCalBtn.textContent = 'カレンダーを開く ▼';
@@ -414,6 +610,27 @@ const openSettingsBtn = document.getElementById('open-settings');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsBtn = document.getElementById('close-settings');
 const saveSettingsBtn = document.getElementById('save-settings');
+const carryoverSettingSelect = document.getElementById('carryover-setting');
+const settlementContainer = document.getElementById('settlement-months-container');
+
+function renderSettlementCheckboxes() {
+  const container = document.getElementById('settlement-checkboxes');
+  container.innerHTML = '';
+  for(let i=1; i<=12; i++){
+    const lbl = document.createElement('label');
+    lbl.className = 'settlement-label';
+    lbl.innerHTML = `<input type="checkbox" class="settlement-chk" value="${i}" ${settlementMonths.includes(i) ? 'checked' : ''}> ${i}月`;
+    container.appendChild(lbl);
+  }
+}
+
+carryoverSettingSelect.addEventListener('change', (e) => {
+  if (e.target.value === 'active') {
+    settlementContainer.classList.remove('hidden');
+  } else {
+    settlementContainer.classList.add('hidden');
+  }
+});
 
 openSettingsBtn.addEventListener('click', (e) => {
   e.preventDefault();
@@ -426,6 +643,14 @@ openSettingsBtn.addEventListener('click', (e) => {
     document.getElementById('setting-start-time-m').value = sM;
     document.getElementById('setting-end-time-h').value = eH;
     document.getElementById('setting-end-time-m').value = eM;
+    
+    carryoverSettingSelect.value = isCarryOverEnabled ? 'active' : 'none';
+    if (isCarryOverEnabled) {
+      settlementContainer.classList.remove('hidden');
+    } else {
+      settlementContainer.classList.add('hidden');
+    }
+    renderSettlementCheckboxes();
     
     settingsModal.classList.remove('hidden');
   } catch (err) {
@@ -450,15 +675,23 @@ saveSettingsBtn.addEventListener('click', () => {
     monthStartDay = newStartDay;
     defaultStartTime = `${sH}:${sM}`;
     defaultEndTime = `${eH}:${eM}`;
+    
+    isCarryOverEnabled = (carryoverSettingSelect.value === 'active');
+    
+    let selectedMonths = [];
+    document.querySelectorAll('.settlement-chk').forEach(chk => {
+      if (chk.checked) selectedMonths.push(parseInt(chk.value, 10));
+    });
+    settlementMonths = selectedMonths;
 
     localStorage.setItem('monthStartDay', monthStartDay);
     localStorage.setItem('defaultStartTime', defaultStartTime);
     localStorage.setItem('defaultEndTime', defaultEndTime);
+    localStorage.setItem('isCarryOverEnabled', isCarryOverEnabled);
+    localStorage.setItem('settlementMonths', JSON.stringify(settlementMonths));
     
-    document.getElementById('start-time-h').value = sH;
-    document.getElementById('start-time-m').value = sM;
-    document.getElementById('end-time-h').value = eH;
-    document.getElementById('end-time-m').value = eM;
+    // 保存後、現在の入力フォームに設定を反映（データがある場合は維持）
+    loadFormData(document.getElementById('work-date').value);
     
     updateCurrentMonthDisplay(); 
     renderCalendar(); 
@@ -482,15 +715,26 @@ function openEditModal(dateStr) {
   const data = workData[dateStr];
   document.getElementById('edit-date-display').textContent = `${dateStr} の記録`;
   
+  const [defStartH, defStartM] = defaultStartTime.split(':');
+  const [defEndH, defEndM] = defaultEndTime.split(':');
+
+  // ★変更：片方しか打刻されていない場合も想定してモーダルにセット
   if (data.start) {
     const [sH, sM] = data.start.split(':');
     document.getElementById('edit-start-time-h').value = sH;
     document.getElementById('edit-start-time-m').value = sM;
+  } else {
+    document.getElementById('edit-start-time-h').value = defStartH;
+    document.getElementById('edit-start-time-m').value = defStartM;
   }
+  
   if (data.end) {
     const [eH, eM] = data.end.split(':');
     document.getElementById('edit-end-time-h').value = eH;
     document.getElementById('edit-end-time-m').value = eM;
+  } else {
+    document.getElementById('edit-end-time-h').value = defEndH;
+    document.getElementById('edit-end-time-m').value = defEndM;
   }
   
   editModal.classList.remove('hidden');
@@ -520,6 +764,10 @@ saveEditBtn.addEventListener('click', () => {
   renderCalendar();
   updateCurrentMonthDisplay(); 
   alert("記録を更新しました！");
+  
+  if(currentEditingDate === document.getElementById('work-date').value) {
+    loadFormData(currentEditingDate);
+  }
 });
 
 deleteEditBtn.addEventListener('click', () => {
@@ -531,12 +779,21 @@ deleteEditBtn.addEventListener('click', () => {
     renderCalendar();
     updateCurrentMonthDisplay(); 
     alert("記録を削除しました。");
+    
+    if(currentEditingDate === document.getElementById('work-date').value) {
+      loadFormData(currentEditingDate);
+    }
   }
 });
 
 // ====== 初期化処理 ======
 try {
+  if (!document.getElementById('work-date').value) {
+    document.getElementById('work-date').value = formatDateString(new Date());
+  }
   initTimeSelects(); 
+  loadFormData(document.getElementById('work-date').value); // ★追加：既存データをフォームに復元
+  
   updateCurrentMonthDisplay();
   renderCalendar();
 } catch(e) {
